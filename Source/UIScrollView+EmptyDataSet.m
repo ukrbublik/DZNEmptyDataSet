@@ -11,6 +11,7 @@
 #import "UIScrollView+EmptyDataSet.h"
 #import <objc/runtime.h>
 
+
 @interface UIView (DZNConstraintBasedLayoutExtensions)
 
 - (NSLayoutConstraint *)equallyRelatedConstraintWithView:(UIView *)view attribute:(NSLayoutAttribute)attribute;
@@ -37,6 +38,11 @@
 
 @property (nonatomic, assign) CGFloat verticalOffset;
 @property (nonatomic, assign) CGFloat verticalSpace;
+
+//ukrbublik
+@property (nonatomic, assign) BOOL customViewLayout;
+@property (nonatomic, assign) CGFloat customTopOffset;
+@property (nonatomic, assign) CGFloat customBottomOffset;
 
 @property (nonatomic, assign) BOOL fadeInOnDisplay;
 
@@ -265,6 +271,14 @@ static char const * const kEmptyDataSetView =       "emptyDataSetView";
     return nil;
 }
 
+- (BOOL)dzn_customViewLayout
+{
+    if (self.emptyDataSetSource && [self.emptyDataSetSource respondsToSelector:@selector(customViewCustomLayoutForEmptyDataSet:)]) {
+        return [self.emptyDataSetSource customViewCustomLayoutForEmptyDataSet:self];
+    }
+    return NO;
+}
+
 - (CGFloat)dzn_verticalOffset
 {
     CGFloat offset = 0.0;
@@ -466,6 +480,15 @@ static char const * const kEmptyDataSetView =       "emptyDataSetView";
         // If a non-nil custom view is available, let's configure it instead
         if (customView) {
             view.customView = customView;
+            
+            view.customViewLayout = [self dzn_customViewLayout];
+            view.customTopOffset = self.scrollIndicatorInsets.top;
+            view.customBottomOffset = self.scrollIndicatorInsets.bottom; //tip: 49 for translucent tabbar
+            
+            if([self isKindOfClass:[UITableView class]]) {
+                UITableView* tv = (UITableView*) self;
+                view.customTopOffset += tv.tableHeaderView.bounds.size.height;
+            }
         }
         else {
             // Get the data from the data source
@@ -877,7 +900,9 @@ Class dzn_baseClassToSwizzleForTarget(id target)
     }
     
     _customView = view;
+    
     _customView.translatesAutoresizingMaskIntoConstraints = NO;
+        
     [self.contentView addSubview:_customView];
 }
 
@@ -896,12 +921,18 @@ Class dzn_baseClassToSwizzleForTarget(id target)
 - (void)removeAllConstraints
 {
     [self removeConstraints:self.constraints];
-    [_contentView removeConstraints:_contentView.constraints];
+    if(self.customViewLayout) {
+    } else {
+        [_contentView removeConstraints:_contentView.constraints];
+    }
 }
 
 - (void)prepareForReuse
 {
-    [self.contentView.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
+    if(self.customViewLayout) {
+    } else {
+        [self.contentView.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
+    }
     
     _titleLabel = nil;
     _detailLabel = nil;
@@ -922,19 +953,36 @@ Class dzn_baseClassToSwizzleForTarget(id target)
     NSLayoutConstraint *centerXConstraint = [self equallyRelatedConstraintWithView:self.contentView attribute:NSLayoutAttributeCenterX];
     NSLayoutConstraint *centerYConstraint = [self equallyRelatedConstraintWithView:self.contentView attribute:NSLayoutAttributeCenterY];
     
-    [self addConstraint:centerXConstraint];
-    [self addConstraint:centerYConstraint];
-    [self addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[contentView]|" options:0 metrics:nil views:@{@"contentView": self.contentView}]];
-    
-    // When a custom offset is available, we adjust the vertical constraints' constants
-    if (self.verticalOffset != 0 && self.constraints.count > 0) {
-        centerYConstraint.constant = self.verticalOffset;
+    if(self.customViewLayout) {
+        //self.backgroundColor = [UIColor greenColor];
+        //self.contentView.backgroundColor = [UIColor redColor];
+        [self addConstraint:[NSLayoutConstraint constraintWithItem:self.contentView attribute:NSLayoutAttributeTop relatedBy:NSLayoutRelationEqual toItem:self attribute:NSLayoutAttributeTop multiplier:1.0 constant:+1*self.customTopOffset]];
+        [self addConstraint:[NSLayoutConstraint constraintWithItem:self.contentView attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:self attribute:NSLayoutAttributeLeading multiplier:1.0 constant:0]];
+        [self addConstraint:[NSLayoutConstraint constraintWithItem:self.contentView attribute:NSLayoutAttributeWidth relatedBy:NSLayoutRelationEqual toItem:self attribute:NSLayoutAttributeWidth multiplier:1.0 constant:0]];
+        [self addConstraint:[NSLayoutConstraint constraintWithItem:self.contentView attribute:NSLayoutAttributeBottomMargin relatedBy:NSLayoutRelationEqual toItem:self attribute:NSLayoutAttributeBottomMargin multiplier:1.0 constant:-1*self.customBottomOffset]];
+    } else {
+        [self addConstraint:centerXConstraint];
+        [self addConstraint:centerYConstraint];
+        [self addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[contentView]|" options:0 metrics:nil views:@{@"contentView": self.contentView}]];
+        
+        
+        // When a custom offset is available, we adjust the vertical constraints' constants
+        if (self.verticalOffset != 0 && self.constraints.count > 0) {
+            centerYConstraint.constant = self.verticalOffset;
+        }
     }
     
     // If applicable, set the custom view's constraints
     if (_customView) {
-        [self.contentView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[customView]|" options:0 metrics:nil views:@{@"customView":_customView}]];
-        [self.contentView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[customView]|" options:0 metrics:nil views:@{@"customView":_customView}]];
+        if(self.customViewLayout) {
+            [self.contentView addConstraint:[NSLayoutConstraint constraintWithItem:self.customView attribute:NSLayoutAttributeTop relatedBy:NSLayoutRelationEqual toItem:self.contentView attribute:NSLayoutAttributeTop multiplier:1.0 constant:0]];
+            [self.contentView addConstraint:[NSLayoutConstraint constraintWithItem:self.customView attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:self.contentView attribute:NSLayoutAttributeLeading multiplier:1.0 constant:0]];
+            [self.contentView addConstraint:[NSLayoutConstraint constraintWithItem:self.customView attribute:NSLayoutAttributeWidth relatedBy:NSLayoutRelationEqual toItem:self.contentView attribute:NSLayoutAttributeWidth multiplier:1.0 constant:0]];
+            [self.contentView addConstraint:[NSLayoutConstraint constraintWithItem:self.customView attribute:NSLayoutAttributeHeight relatedBy:NSLayoutRelationEqual toItem:self.contentView attribute:NSLayoutAttributeHeight multiplier:1.0 constant:0]];
+        } else {
+            [self.contentView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[customView]|" options:0 metrics:nil views:@{@"customView":_customView}]];
+            [self.contentView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[customView]|" options:0 metrics:nil views:@{@"customView":_customView}]];
+        }
     }
     else {
         CGFloat width = CGRectGetWidth(self.frame) ? : CGRectGetWidth([UIScreen mainScreen].bounds);
