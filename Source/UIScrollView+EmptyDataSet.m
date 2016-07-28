@@ -455,6 +455,9 @@ static char const * const kEmptyDataSetView =       "emptyDataSetView";
         return;
     }
     
+    //ukrbublik: fix for case when custom empty view was present -> present non-custom empty view
+    [self dzn_invalidate];
+    
     if (([self dzn_shouldDisplay] && [self dzn_itemsCount] == 0) || [self dzn_shouldBeForcedToDisplay])
     {
         // Notifies that the empty dataset view will appear
